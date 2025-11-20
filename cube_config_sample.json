@@ -1,0 +1,7 @@
+{
+  "cube_length": 128,
+  "vertical_height": 64.0,
+  "vertical_resolution": 0.5,
+  "footprint_separation": 2.0,
+  "footprint_radius": 2.0
+}
