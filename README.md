@@ -1,6 +1,8 @@
 # Hyperheight Data Cube (HHDC) Creator
 
-Pipeline for downloading NEON LiDAR point clouds and generating Hyperheight data cubes used in the **Hyperheight lidar compressive sampling and machine learning reconstruction of forested landscapes** study. Author: Andres Ramirez-Jaime.
+Pipeline for downloading NEON LiDAR point clouds and generating Hyperheight data cubes used in the **Hyperheight lidar compressive sampling and machine learning reconstruction of forested landscapes** study. 
+
+Author: Andres Ramirez-Jaime.
 
 ## Why this exists
 - Pulls classified point cloud tiles directly from the [NEON API](https://data.neonscience.org/).
