@@ -64,7 +64,7 @@ The cube generator expects `.laz` tiles somewhere under `--pointcloud-dir` and w
 `cube_config_sample.json` documents the generator parameters:
 ```json
 {
-  "cube_length": 96,
+  "cube_length": 128,
   "vertical_height": 64.0,
   "vertical_resolution": 0.5,
   "footprint_separation": 2.0,
