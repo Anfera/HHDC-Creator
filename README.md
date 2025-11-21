@@ -1,4 +1,5 @@
 # Hyperheight Data Cube (HHDC) Creator
+![Explanation](images/Explanation.png)
 
 Pipeline for downloading NEON LiDAR point clouds and generating Hyperheight data cubes used in the **Hyperheight lidar compressive sampling and machine learning reconstruction of forested landscapes** study. 
 
