@@ -85,6 +85,13 @@ The cube generator expects `.laz` tiles somewhere under `--pointcloud-dir` and w
 - `neon_lidar/`, `cubes/` – default download and output roots (created at runtime).
 - `experiments.ipynb` – example notebook for analysis and downstream ML experiments.
 - `hhdc/canopy_plots.py` – visualization utilities for generated cubes.
+- `hhdc/forward_model.py` – lidar forward imaging model that applies Gaussian aggregation, distance-based photon loss, and mixed noise sources for controlled degradation of cubes.
+
+## Forward model (controlled degradation)
+`hhdc/forward_model.py` provides a PyTorch implementation of a lidar forward imaging model that degrades high-res cubes in a controlled way:
+- Gaussian aggregation over the footprint to blur/spread returns before downsampling.
+- Photon loss with distance scaling to simulate reduced signal at higher altitudes.
+- Multiple noise sources (Poisson shot noise with additive Gaussian readout noise) to mimic sensor and background noise.
 
 ## Citation
 If you use this code or derived cubes, please cite:
