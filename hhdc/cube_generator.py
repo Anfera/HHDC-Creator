@@ -107,26 +107,32 @@ def _get_point_count(path: Path) -> int:
 
 
 def _read_file_into_buffer(
-    path: Path, 
-    start_idx: int, 
-    xs_shared: np.ndarray, 
-    ys_shared: np.ndarray, 
-    zs_shared: np.ndarray
+    path: Path,
+    start_idx: int,
+    xs_shared: np.ndarray,
+    ys_shared: np.ndarray,
+    zs_shared: np.ndarray,
+    classes_shared: Optional[np.ndarray] = None,
 ) -> None:
     """Reads a single file and writes directly into the pre-allocated arrays."""
     with laspy.open(path) as reader:
         # laspy.read() is optimized to read all dimensions, but we simply
         # extract what we need and let the object die immediately to free RAM.
         las = reader.read()
-        
+
         # Verify we don't overflow if the header count was wrong (rare but possible)
         count = len(las)
         end_idx = start_idx + count
-        
+
         # Direct assignment avoids creating intermediate large copies
         xs_shared[start_idx:end_idx] = las.x
         ys_shared[start_idx:end_idx] = las.y
         zs_shared[start_idx:end_idx] = las.z
+        if classes_shared is not None:
+            if "classification" in las.point_format.dimension_names:
+                classes_shared[start_idx:end_idx] = np.asarray(las.classification, dtype=np.uint8)
+            else:
+                classes_shared[start_idx:end_idx] = 0
 
 
 def read_points(
@@ -164,6 +170,7 @@ def read_points(
     xs = np.empty(total_points, dtype=np.float32)
     ys = np.empty(total_points, dtype=np.float32)
     zs = np.empty(total_points, dtype=np.float32)
+    classifications = np.empty(total_points, dtype=np.uint8)
 
     # 3. Parallel Load
     current_start = 0
@@ -176,33 +183,59 @@ def read_points(
     if jobs and jobs > 1:
         with ThreadPoolExecutor(max_workers=jobs) as executor:
             futures = [
-                executor.submit(_read_file_into_buffer, path, start, xs, ys, zs)
+                executor.submit(_read_file_into_buffer, path, start, xs, ys, zs, classifications)
                 for path, start in tasks
             ]
             for _ in tqdm(as_completed(futures), total=len(futures), desc="Loading data"):
                 pass  # Just updating the progress bar
     else:
         for path, start in tqdm(tasks, desc="Loading data"):
-            _read_file_into_buffer(path, start, xs, ys, zs)
+            _read_file_into_buffer(path, start, xs, ys, zs, classifications)
 
-    return xs, ys, zs
+    return filter_invalid_points(xs, ys, zs, classifications)
 
 
-def filter_invalid_points(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def filter_invalid_points(
+    xs: np.ndarray,
+    ys: np.ndarray,
+    zs: np.ndarray,
+    classification: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Removes NaN/Inf records that cause downstream histogram bin edges to become NaN.
+    Removes NaN/Inf records and optional noise points (classification == 7) that
+    would contaminate downstream histogram bin edges.
     """
-    mask = np.isfinite(xs) & np.isfinite(ys) & np.isfinite(zs)
-    if mask.all():
+    if xs.size == 0:
         return xs, ys, zs
+
+    mask = np.ones(xs.shape[0], dtype=bool)
+    removal_details: List[str] = []
+
+    if classification is not None:
+        if classification.shape[0] != xs.shape[0]:
+            raise ValueError("Classification array length does not match coordinate arrays.")
+        noise_mask = classification != 7
+        noise_removed = int(mask.sum() - np.count_nonzero(mask & noise_mask))
+        mask &= noise_mask
+        if noise_removed:
+            removal_details.append(f"{noise_removed} with classification 7")
+
+    finite_mask = np.isfinite(xs) & np.isfinite(ys) & np.isfinite(zs)
+    invalid_removed = int(mask.sum() - np.count_nonzero(mask & finite_mask))
+    mask &= finite_mask
+    if invalid_removed:
+        removal_details.append(f"{invalid_removed} invalid (NaN/Inf)")
 
     valid_points = int(mask.sum())
     removed_points = int(xs.size - valid_points)
 
     if valid_points == 0:
-        raise ValueError("All point records are invalid (NaN or Inf).")
+        raise ValueError("All point records were filtered out (noise or invalid values).")
 
-    print(f"Discarding {removed_points} invalid points before cube generation.")
+    if removed_points:
+        detail = "; ".join(removal_details) if removal_details else "filtered points"
+        print(f"Discarding {removed_points} points ({detail}) before cube generation.")
+
     return xs[mask], ys[mask], zs[mask]
 
 
@@ -242,23 +275,30 @@ def read_points_clipped(
 
     x_min, x_max, y_min, y_max = bounds
 
-    def _read_clip(info: LazTileInfo) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _read_clip(info: LazTileInfo) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         with laspy.open(info.path) as reader:
             las = reader.read()
+        classification = (
+            np.asarray(las.classification, dtype=np.uint8)
+            if "classification" in las.point_format.dimension_names
+            else np.zeros(len(las), dtype=np.uint8)
+        )
         mask = (las.x >= x_min) & (las.x <= x_max) & (las.y >= y_min) & (las.y <= y_max)
         if not mask.any():
             return (
                 np.empty(0, dtype=np.float32),
                 np.empty(0, dtype=np.float32),
                 np.empty(0, dtype=np.float32),
+                np.empty(0, dtype=np.uint8),
             )
         return (
             np.asarray(las.x[mask], dtype=np.float32),
             np.asarray(las.y[mask], dtype=np.float32),
             np.asarray(las.z[mask], dtype=np.float32),
+            classification[mask],
         )
 
-    results: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+    results: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
 
     if jobs and jobs > 1:
         with ThreadPoolExecutor(max_workers=jobs) as executor:
@@ -272,6 +312,7 @@ def read_points_clipped(
     xs_parts = [r[0] for r in results if r[0].size]
     ys_parts = [r[1] for r in results if r[1].size]
     zs_parts = [r[2] for r in results if r[2].size]
+    cls_parts = [r[3] for r in results if r[3].size]
 
     if not xs_parts:
         return np.empty(0, dtype=np.float32), np.empty(0, dtype=np.float32), np.empty(0, dtype=np.float32)
@@ -279,7 +320,8 @@ def read_points_clipped(
     xs = np.concatenate(xs_parts)
     ys = np.concatenate(ys_parts)
     zs = np.concatenate(zs_parts)
-    return xs, ys, zs
+    classification = np.concatenate(cls_parts) if cls_parts else None
+    return filter_invalid_points(xs, ys, zs, classification)
 
 
 def build_grid(
@@ -612,7 +654,6 @@ def _generate_cubes_batched(
         )
 
         xs, ys, zs = read_points_clipped(relevant_infos, expanded_bounds, jobs=read_jobs)
-        xs, ys, zs = filter_invalid_points(xs, ys, zs)
         if zs.size == 0:
             print("  No points survived filtering; skipping batch.")
             continue
@@ -733,7 +774,6 @@ def generate_cubes(
         return total_cubes
 
     xs, ys, zs = read_points(file_infos, jobs=read_jobs)
-    xs, ys, zs = filter_invalid_points(xs, ys, zs)
 
     print("Building spatial index (this may take a moment)...")
     coords = np.empty((xs.size, 2), dtype=np.float32)

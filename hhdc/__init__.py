@@ -11,7 +11,7 @@ from .canopy_plots import (
 )
 from .cube_generator import CubeConfig, generate_cubes, generate_cubes_from_config
 from .download import download_site_lidar
-from .forward_model import LidarForwardImagingModel
+# from .forward_model import LidarForwardImagingModel
 
 __all__ = [
     "adaptive_dtm_filter",
