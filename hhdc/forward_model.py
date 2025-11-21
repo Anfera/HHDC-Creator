@@ -75,7 +75,7 @@ class LidarForwardImagingModel(nn.Module):
         kernel = kernel / kernel.sum()
         return kernel.view(1, 1, size, size)
 
-    def forward(self, X_h, altitude=1.0):
+    def forward(self, X_h, altitude=500.0):
         if X_h.ndim == 3:
             X_h = X_h.unsqueeze(0)
 

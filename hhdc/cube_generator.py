@@ -421,7 +421,8 @@ def generate_cube(
     x_min, x_max, y_min, y_max = bounds
     x_centers, y_centers = build_grid(x_min, x_max, y_min, y_max, cfg)
     
-    cube = np.zeros((y_centers.size, x_centers.size, bin_count), dtype=np.int32)
+    # Channel-first layout so downstream models receive [bins, H, W]
+    cube = np.zeros((bin_count, y_centers.size, x_centers.size), dtype=np.int32)
     footprint_counts = np.zeros((y_centers.size, x_centers.size), dtype=np.int32)
 
     for yi, cy in enumerate(y_centers):
@@ -435,7 +436,7 @@ def generate_cube(
             footprint_counts[yi, xi] = count
             if count == 0:
                 continue
-            cube[yi, xi, :] = compute_histogram(heights, z_base, z_top, bin_count)
+            cube[:, yi, xi] = compute_histogram(heights, z_base, z_top, bin_count)
 
     return cube, x_centers, y_centers, bin_edges, footprint_counts
 
