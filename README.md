@@ -35,6 +35,7 @@ python -m hhdc.main \
 Notes:
 - `--tiles-per-batch` also applies through the orchestrator: it limits how many tiles share one KD-tree when generating cubes. Higher values (e.g., 32 as shown) use more RAM but rebuild less often (faster). Lower values use less RAM but rebuild more (slower). Set `0` to disable batching and build one tree per month.
 Outputs land under `cubes/<SITE>/<month>/` with filenames that include the month suffix, while raw LiDAR stays in `neon_lidar/<SITE>/<month>/`.
+If you want to replicate our exact results, you can use the reference cube provided at `SampleCube/gt2.npz`.
 
 Key options:
 - `--site` (required) NEON site code (e.g., `ABBY`, `OSBS`, `SERC`).
